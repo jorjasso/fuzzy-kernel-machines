@@ -10,6 +10,8 @@ import types
 from kernelfuzzy.fuzzyset import FuzzySet
 from kernelfuzzy.fuzzification import FuzzyData
 from typing import Callable, List
+import sklearn
+from sklearn.base import BaseEstimator, TransformerMixin
 
 def linear_kernel(X, Y):
     
@@ -181,7 +183,7 @@ def nonsingleton_gaussian_kernel(X: FuzzySet,
 
 def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                                              Y: FuzzyData,
-                                             gamma: float) -> np.ndarray:
+                                             KBF_param: float) -> np.ndarray:
 
         '''
 
@@ -204,7 +206,7 @@ def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                 #
                 value=1
                 for x, y, in zip(tuple_x, tuple_y):
-                    value=value*nonsingleton_gaussian_kernel(x,y,gamma)
+                    value=value*nonsingleton_gaussian_kernel(x, y, KBF_param)
                 #TODO profile this
                 #value=0
                 #for x, y, in zip(tuple_x, tuple_y):
@@ -215,9 +217,57 @@ def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                 gram_matrix[i, j] = value
         return gram_matrix
 
+#TODO profile this
+#def test(X: FuzzySet,Y: FuzzySet, gamma: float):
+#    mean_x, sigma_x = X.get_membership_function_params()
+#    mean_y, sigma_y = Y.get_membership_function_params()
 
-def test(X: FuzzySet,Y: FuzzySet, gamma: float):
-    mean_x, sigma_x = X.get_membership_function_params()
-    mean_y, sigma_y = Y.get_membership_function_params()
+#    return -0.5 * gamma * (mean_x - mean_y) ** 2 / (sigma_x ** 2 + sigma_y ** 2)
 
-    return -0.5 * gamma * (mean_x - mean_y) ** 2 / (sigma_x ** 2 + sigma_y ** 2)
+def gram_matrix_KBF_kernel(X: FuzzyData,
+                           Y: FuzzyData,
+                           KBF_param: float) -> np.ndarray:
+    '''
+
+    Calculates the Gram matrix using the nonsingleton Gaussian kernel on fuzzy sets
+
+    Input:
+        X:                      (Type: FuzzyData)
+        Y:                      (Type: FuzzyData)
+        gamma:                  (Type: float) kernel parameter
+
+    Output:
+        (Type: numpy.ndarray) kernel matrix
+
+    '''
+
+    gram_matrix = np.zeros((X.shape[0], Y.shape[0]))
+    for i, tuple_x in enumerate(X):
+        for j, tuple_y in enumerate(Y):
+
+            #
+            value = 1
+            for x, y, in zip(tuple_x, tuple_y):
+                value = value * nonsingleton_gaussian_kernel(x, y, KBF_param)
+
+            gram_matrix[i, j] = value
+
+    denominator=1/np.sum(gram_matrix, axis=1)
+
+    gram_matrix=gram_matrix*denominator[:, np.newaxis]
+
+
+    return gram_matrix
+
+# Wrapper class for the custom kernel KBF kernel
+class KBFkernel(BaseEstimator,TransformerMixin):
+    def __init__(self, KBF_param=1.0):
+        super(KBFkernel,self).__init__()
+        self.KBF_param = KBF_param
+
+    def transform(self, X):
+        return gram_matrix_KBF_kernel(X, self.X_train_, KBF_param=self.KBF_param)
+
+    def fit(self, X, y=None, **fit_params):
+        self.X_train_ = X
+        return self

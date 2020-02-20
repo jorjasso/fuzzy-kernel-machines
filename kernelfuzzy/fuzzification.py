@@ -7,15 +7,21 @@
 import numpy as np
 from kernelfuzzy.fuzzyset import FuzzySet
 from kernelfuzzy.memberships import gaussmf
+import pandas as pd
+
+
+###
+###
 
 class FuzzyData:
     
-    _data             = None # I dont know if we want to keep this
+    _data             = None
     _fuzzydata        = None
-    _epistemic_values = None # only for epistemic fuzzy sets
+    _epistemic_values = None #for epistemic fuzzification
+    _std_values       = None #for nonsingleton fuzzification
     _target           = None
 
-    def __init__(self, data=None, target=None):
+    def __init__(self, data:pd.DataFrame=None, target:str=None):
         if data is not None:
             self._data = data
             self._target = target
@@ -57,6 +63,12 @@ class FuzzyData:
     def get_epistemic_values(self):
         return self._epistemic_values
 
+    def get_std_values(self):
+        return self._std_values
+
+    def get_data(self):
+        return self._data
+
     def get_target(self):
         return self._data[self._target]
 
@@ -72,6 +84,36 @@ class FuzzyData:
         print("(_fuzzydata)        \n", _fuzzydata, "\n")
         print("(_epistemic_values) \n", _epistemic_values, "\n")
         print("(_target)           \n", _target, "\n")
+
+
+    def non_singleton_fuzzification_classification(self, constant_std=True):
+
+
+        grouped = self._data.groupby([self._target])
+
+        if constant_std:
+            self._std_values = grouped.transform(lambda x: np.std(x))
+        else:
+            self._std_values = grouped.transform(lambda x: np.random.normal(np.std(x), (5/100)*np.std(x), len(x)))
+
+        num_rows = self._std_values.shape[0]
+        num_cols = self._std_values.shape[1]
+
+        self._fuzzydata = np.asarray([[FuzzySet(membership_function_params=[self._data.iloc[j, i],
+                                                                            self._std_values.iloc[j, i]])
+                                       for i in range(num_cols)]
+                                      for j in range(num_rows)])
+
+
+
+
+
+        #grouped = self._data.groupby([self._target]).agg(['std'])
+
+
+
+
+
 
     # TOYS DATASETS
     @staticmethod
@@ -98,6 +140,9 @@ class FuzzyData:
                                                                      np.std(np.random.uniform(0, 100, 2))])
                                 for i in range(num_cols)]
                                for j in range(num_rows)])
+
+
+
 
 
     # TODO profile and compare with
