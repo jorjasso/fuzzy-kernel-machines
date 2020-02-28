@@ -19,7 +19,7 @@ class FuzzySet:
             self._elements = None
             self._elements_type = None
             self._membership_degrees = membership_degrees = None
-            self._membership_function_params = membership_function_params = None
+            self._membership_function_params = membership_function_params
             self._membership_function = None
 
         #second type: elements and membership degrees  are given but not the membership function
