@@ -183,7 +183,7 @@ def nonsingleton_gaussian_kernel(X: FuzzySet,
 
 def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                                              Y: FuzzyData,
-                                             KBF_param: float) -> np.ndarray:
+                                             param: float) -> np.ndarray:
 
         '''
 
@@ -206,7 +206,7 @@ def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                 #
                 value=1
                 for x, y, in zip(tuple_x, tuple_y):
-                    value=value*nonsingleton_gaussian_kernel(x, y, KBF_param)
+                    value=value*nonsingleton_gaussian_kernel(x, y, param)
                 #TODO profile this
                 #value=0
                 #for x, y, in zip(tuple_x, tuple_y):
@@ -256,17 +256,34 @@ def gram_matrix_KBF_kernel(X: FuzzyData,
 
     gram_matrix=gram_matrix*denominator[:, np.newaxis]
 
+    #if gram_matrix.shape[0]== gram_matrix.shape[1]:
+    #    gram_matrix=(gram_matrix+np.transpose(gram_matrix))/2
+
 
     return gram_matrix
 
 # Wrapper class for the custom kernel KBF kernel
 class KBFkernel(BaseEstimator,TransformerMixin):
-    def __init__(self, KBF_param=1.0):
+    def __init__(self, param=1.0):
         super(KBFkernel,self).__init__()
-        self.KBF_param = KBF_param
+        self.param = param
 
     def transform(self, X):
-        return gram_matrix_KBF_kernel(X, self.X_train_, KBF_param=self.KBF_param)
+        return gram_matrix_KBF_kernel(X, self.X_train_, KBF_param=self.param)
+
+    def fit(self, X, y=None, **fit_params):
+        self.X_train_ = X
+        return self
+
+
+# Wrapper class for the custom kernel KBF kernel
+class NonSingletonKernel(BaseEstimator,TransformerMixin):
+    def __init__(self, param=1.0):
+        super(NonSingletonKernel,self).__init__()
+        self.param = param
+
+    def transform(self, X):
+        return gram_matrix_nonsingleton_gaussian_kernel(X, self.X_train_, param=self.param)
 
     def fit(self, X, y=None, **fit_params):
         self.X_train_ = X

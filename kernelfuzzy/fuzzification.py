@@ -8,6 +8,8 @@ import numpy as np
 from kernelfuzzy.fuzzyset import FuzzySet
 from kernelfuzzy.memberships import gaussmf
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
+
 
 
 ###
@@ -24,9 +26,6 @@ class FuzzyData:
         if data is not None:
             self._data = data
             self._target = target
-            self._data.columns = self._data.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('(',
-                                                                                                              '').str.replace(
-                ')', '')
 
     def quantile_fuzzification_classification(self):
 
@@ -91,7 +90,7 @@ class FuzzyData:
         grouped = self._data.groupby([self._target])
 
         if constant_std:
-            self._std_values = grouped.transform(lambda x: np.std(x))
+            self._std_values = grouped.transform(lambda x: std_proportion)
         else:
 
             self._std_values = grouped.transform(lambda x: np.random.normal(np.random.uniform(low=np.std(x)/10, high=np.std(x)/2, size=len(x)),
@@ -143,3 +142,35 @@ class FuzzyData:
                                                           '''
 
     # TODO better parsing
+
+class NonSingletonFuzzifier(BaseEstimator,TransformerMixin):
+    def __init__(self, std_proportion=1.0,constant_std=True):
+        super(NonSingletonFuzzifier,self).__init__()
+        self.std_proportion = std_proportion
+        self.constant_std_=constant_std
+
+    def transform(self,X,y=None):
+        num_rows = X.shape[0]
+        num_cols = X.shape[1]
+
+        return np.asarray([[FuzzySet(membership_function_params=[X[j, i],
+                                                                 self.std_proportion])
+                            for i in range(num_cols)]
+                           for j in range(num_rows)])
+        #if self.constant_std_==True:
+        #    num_rows = X.shape[0]
+        #    num_cols = X.shape[1]
+
+        #   return np.asarray([[FuzzySet(membership_function_params=[X[j, i],
+        #                                                            self.std_proportion])
+        #                                  for i in range(num_cols)]
+        #                                 for j in range(num_rows)])
+        #if self.constant_std_ == False:
+        #    df = pd.DataFrame(data=X, columns=['x1', 'x2'])
+        #    df['y'] = y
+        #    fuzzy_data = FuzzyData(data=df, target='y')
+        #    fuzzy_data.non_singleton_fuzzification_classification(constant_std=self.constant_std_, std_proportion=self.std_proportion)
+        #    return fuzzy_data.get_fuzzydata()
+
+    def fit(self,X, y=None):
+        return self
