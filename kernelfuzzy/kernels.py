@@ -12,6 +12,7 @@ from kernelfuzzy.fuzzification import FuzzyData
 from typing import Callable, List
 import sklearn
 from sklearn.base import BaseEstimator, TransformerMixin
+import numpy.ma as ma
 
 def linear_kernel(X, Y):
     
@@ -207,6 +208,7 @@ def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                 value=1
                 for x, y, in zip(tuple_x, tuple_y):
                     value=value*nonsingleton_gaussian_kernel(x, y, param)
+
                 #TODO profile this
                 #value=0
                 #for x, y, in zip(tuple_x, tuple_y):
@@ -215,6 +217,8 @@ def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                 #print('(prod, value)', prod, value)
 
                 gram_matrix[i, j] = value
+        if X is Y:
+            gram_matrix=gram_matrix+np.eye(X.shape[0])*np.nextafter(0,1)
         return gram_matrix
 
 #TODO profile this
@@ -252,7 +256,57 @@ def gram_matrix_KBF_kernel(X: FuzzyData,
 
             gram_matrix[i, j] = value
 
-    denominator=1/np.sum(gram_matrix, axis=1)
+    if X is Y:
+        gram_matrix = gram_matrix + np.eye(X.shape[0]) * np.nextafter(0, 1)
+
+    #because overflow
+    denominator=1/(np.sum(gram_matrix, axis=1)+np.nextafter(0, 1))
+    denominator=np.nan_to_num(denominator)
+
+
+    #retrieve kernel parameters and data associated with invalid values and implement an strategy for those values
+    #print("gram_matrix :{}".format(gram_matrix))
+    #print("np.sum(gram_matrix, axis=1) :{}".format(np.sum(gram_matrix, axis=1)))
+    #print("denominator",denominator)
+
+    #print("details:")
+    #
+    #for i, tuple_x in enumerate(X):
+    #    for j, tuple_y in enumerate(Y):
+
+    #        if i==0 and j==0:
+    #            value = 1
+    #            for x, y, in zip(tuple_x, tuple_y):
+    #                print("fuzzy sets x, y")
+    #                print("x : {}".format(x.get_membership_function_params()))
+    #                print("y : {}".format(y.get_membership_function_params()))
+    #                print("nonsingleton_gaussian_kernel(x, y, KBF_param) : {}".format(nonsingleton_gaussian_kernel(x, y, KBF_param)))
+    #                value = value * nonsingleton_gaussian_kernel(x, y, KBF_param)
+    #                print("accumulative value : {}".format(value))
+
+
+
+
+    #
+    #masked_K = np.ma.masked_invalid(gram_matrix)
+    #print("invalid values",gram_matrix[masked_K.mask])
+    #print("kernel parameter : {}".format(KBF_param))
+    #idx=np.where(masked_K.mask==True)
+    #print("invalid values", gram_matrix[idx])
+    #print("associated values X: {}".format(X[idx[0]]))
+    #print("associated values Y: {}".format(X[idx[1]]))
+
+    #masked_denominator=np.ma.masked_invalid(denominator)
+    #idx=np.where(masked_denominator.mask==True)
+    #print("invalid values denominator : {}".format(denominator[idx]))
+
+
+    #         print(K)
+    #         print(masked_K)
+    #         print(masked_K.mask)
+    #         print(np.where(masked_K.mask==True))
+    #         print(K[masked_K.mask])
+    #
 
     gram_matrix=gram_matrix*denominator[:, np.newaxis]
 

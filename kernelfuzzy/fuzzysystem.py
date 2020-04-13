@@ -23,7 +23,8 @@ def plot_membership_fun(rules_antecedents,X,percentage_range):
     D = rules_antecedents.shape[1]  # number of dimensions
 
     for d in range(0, D):
-        plt.subplots(figsize=(15, 3))
+        #plt.subplots(figsize=(15, 3))
+        plt.subplots()
         params = [fuzzySet.get_membership_function_params() for fuzzySet in rules_antecedents[:, d]]
         range_dim=(np.max(X[:, d]) - np.min(X[:, d]))
         elems = np.arange(np.min(X[:, d])-percentage_range/100*range_dim, np.max(X[:, d])+percentage_range/100*range_dim, range_dim / 1000)

@@ -3,6 +3,8 @@ import plotly.graph_objs as go
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import skfuzzy as fuzz # for FCM
+
 
 from  kernelfuzzy.fuzzification import FuzzyData, NonSingletonFuzzifier
 from kernelfuzzy.kernels import gram_matrix_KBF_kernel,gram_matrix_nonsingleton_gaussian_kernel
@@ -168,8 +170,8 @@ def plot_fuzzydata(fuzzy_data, X,percentage_range):
 
 def sign_fun(y_input):
     y=y_input.copy()
-    y[y>=0]=1
-    y[y<0]=0
+    y[y>0]=1
+    y[y<=0]=0
     return y
 
 def plot_decision_function_kernel_KBF(X,  y, clf, std_proportion,gamma, type=0):
@@ -237,3 +239,50 @@ def plot_decision_function_kernel_Nonsingleton(X,  y, clf, std_proportion,gamma,
     if type == 1:
         ax.contourf(XX, YY, Z, cmap='seismic', levels=[-1, 0, 1], alpha=0.5)
     plt.show()
+
+
+def plot_mf_FCM(data, col_names, list_centers):
+    for column, n_centers in zip(col_names, list_centers):
+        print('Colunm Name : ', column)
+        cntr, u, u0, d, jm, p, fpc = fuzz.cluster.cmeans(data[column].values.reshape(1, -1),
+                                                         n_centers,
+                                                         2,
+                                                         error=0.005,
+                                                         maxiter=1000,
+                                                         init=None)
+
+        # Store fpc values for later
+
+        # plots
+        plt.plot(data[column].values, 'o')
+        plt.title('values')
+        plt.show()
+        # plot MFs
+        for i in range(0, n_centers):
+            plt.plot(u[i, :])
+        plt.title('MF')
+        plt.show()
+
+        # sorted values
+        index = data[column].values.argsort()
+        sorted_vals = data[column].values[index]
+        plt.plot(sorted_vals)
+        plt.title('sorted values')
+        plt.show()
+        # plot MFs
+        for i in range(0, n_centers):
+            plt.plot(sorted_vals, u[i, index])
+        plt.title('MF ' + column)
+        plt.show()
+
+def plot_dataset(dataset,str_name):
+
+    # Plot
+    fig, ax = plt.subplots()
+    ax.margins(0.05) # Optional, just adds 5% padding to the autoscaling
+    for name, group in dataset.groupby('y'):
+        ax.plot(group.x1, group.x2, marker='o', linestyle='', ms=12, label=name)
+    ax.legend()
+    plt.title("dataset: "+str_name)
+    plt.show()
+
