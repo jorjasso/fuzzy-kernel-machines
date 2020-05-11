@@ -4,6 +4,7 @@
 
 """
 
+
 import numpy as np
 from kernelfuzzy.fuzzyset import FuzzySet
 from kernelfuzzy.memberships import gaussmf
@@ -65,8 +66,6 @@ class FuzzyData:
     def get_std_values(self):
         return self._std_values
 
-    def get_data(self):
-        return self._data
 
     def get_target(self):
         return self._data[self._target]
@@ -142,6 +141,19 @@ class FuzzyData:
                                                           '''
 
     # TODO better parsing
+
+def get_mean_and_std_matrix(fuzzyDataSet: np.ndarray):
+    '''
+        get the mean (np.matrix) and the std (np.matrix) from fuzzy data (numpy matrix of fuzzy set objects)
+        this work only with non-singleton fuzzyfication and gaussian membership parameters
+        :return:
+     '''
+    num_rows, num_cols = fuzzyDataSet.shape
+    mean_X = np.asarray([[fuzzyDataSet[j, i].get_membership_function_params()[0] for i in range(num_cols)]  for j in range(num_rows)])
+    sigma_X =  np.asarray([[fuzzyDataSet[j, i].get_membership_function_params()[1] for i in range(num_cols)]  for j in range(num_rows)])
+
+    return mean_X,sigma_X
+
 
 class NonSingletonFuzzifier(BaseEstimator,TransformerMixin):
     def __init__(self, std_proportion=1.0,constant_std=True):

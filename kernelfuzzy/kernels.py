@@ -8,14 +8,18 @@ import itertools
 import numpy as np
 import types
 from kernelfuzzy.fuzzyset import FuzzySet
-from kernelfuzzy.fuzzification import FuzzyData
+from  kernelfuzzy.fuzzification import FuzzyData, get_mean_and_std_matrix
 from typing import Callable, List
 import sklearn
 from sklearn.base import BaseEstimator, TransformerMixin
 import numpy.ma as ma
+# from numba.typed import List
+from numba import njit,prange
+from functools import reduce
+from operator import attrgetter
+
 
 def linear_kernel(X, Y):
-    
     """
 
     the linear kernel
@@ -28,11 +32,12 @@ def linear_kernel(X, Y):
         (Type: real) kernel result
 
     """
-    
+
     X = np.array(X)
     Y = np.array(Y)
 
     return np.dot(X, Y.T)
+
 
 def cross_product_kernel(X: FuzzySet,
                          Y: FuzzySet,
@@ -62,18 +67,19 @@ def cross_product_kernel(X: FuzzySet,
     y = Y.get_pair()
 
     cross_product_map = list(itertools.product(*list([x, y])))
-    
+
     # iterate over the cross-product map
-    x = [kernel_on_elements(*input_validation(val[0][0], val[1][0], params_kernel_on_elements)) for val in cross_product_map]
-    y = [kernel_on_membership_degrees(*input_validation(val[0][1], val[1][1], params_kernel_on_membership_degrees)) for val in cross_product_map]
+    x = [kernel_on_elements(*input_validation(val[0][0], val[1][0], params_kernel_on_elements)) for val in
+         cross_product_map]
+    y = [kernel_on_membership_degrees(*input_validation(val[0][1], val[1][1], params_kernel_on_membership_degrees)) for
+         val in cross_product_map]
 
     x = np.asarray([float(i) for i in x])
     y = np.asarray([float(i) for i in y])
     return np.dot(x, y)
 
 
-def input_validation(x: np.ndarray, y: np.ndarray, params: List[float]=''):
-    
+def input_validation(x: np.ndarray, y: np.ndarray, params: List[float] = ''):
     """
 
     Argument validation to be used by sklearn methods.
@@ -88,27 +94,27 @@ def input_validation(x: np.ndarray, y: np.ndarray, params: List[float]=''):
         (Type: tuple)
 
     """
-    
+
     x = np.array(x)
     y = np.array(y)
-    
+
     # unique observation with unique feature
     #     sum(np.array(3).shape) prints 0; sum(np.array([3]).shape) prints 1
-    if sum(np.array(x).shape) == 0 or sum(np.array(x).shape) == 1 :
+    if sum(np.array(x).shape) == 0 or sum(np.array(x).shape) == 1:
         x = x.reshape(-1, 1)
         y = y.reshape(-1, 1)
 
     # unique observation with multiple features:  np.array([3,3]) for example
-    if x.shape[0] > 1 & len(x.shape)==1:
+    if x.shape[0] > 1 & len(x.shape) == 1:
         x = x.reshape(1, -1)
         y = y.reshape(1, -1)
 
     # multiple observations with unique features
-    if x.shape[0]>1 & len(x.shape)>1:
+    if x.shape[0] > 1 & len(x.shape) > 1:
         x = x.reshape(-1, 1)
         y = y.reshape(-1, 1)
 
-    arguments=[x,y]
+    arguments = [x, y]
 
     if type(params) is list:
         for e in params:
@@ -120,12 +126,11 @@ def input_validation(x: np.ndarray, y: np.ndarray, params: List[float]=''):
 
 
 def gram_matrix_cross_product_kernel(X: FuzzyData,
-                                     Y:FuzzyData,
+                                     Y: FuzzyData,
                                      kernel_on_elements: Callable,
                                      params_kernel_on_elements: List,
                                      kernel_on_membership_degrees: Callable,
-                                     params_kernel_on_membership_degrees: List)-> np.ndarray:
-    
+                                     params_kernel_on_membership_degrees: List) -> np.ndarray:
     '''
 
     Calculates the Gram matrix using the Cross Product kernel on  fuzzy sets
@@ -159,6 +164,8 @@ def gram_matrix_cross_product_kernel(X: FuzzyData,
     return gram_matrix
 
 
+# @njit
+
 def nonsingleton_gaussian_kernel(X: FuzzySet,
                                  Y: FuzzySet,
                                  gamma: float) -> np.ndarray:
@@ -182,11 +189,69 @@ def nonsingleton_gaussian_kernel(X: FuzzySet,
 
     return np.exp(-0.5 * gamma * (mean_x - mean_y) ** 2 / (sigma_x ** 2 + sigma_y ** 2))
 
+
+@njit(parallel=True, nogil=True, cache=True)
+def gram_matrix_nonsingleton_gaussian_kernel_njit(mean_X: np.ndarray,
+                                                  mean_Y: np.ndarray,
+                                                  sigma_X: np.ndarray,
+                                                  sigma_Y: np.ndarray,
+                                                  param: float) -> np.ndarray:
+    '''
+
+        Calculates the Gram matrix using the nonsingleton Gaussian kernel on fuzzy sets
+        optimized for Numba
+
+        Input:
+            mean_X, sigma_X:     matrix of parameters for fuzzy data X (Type: FuzzyData)
+            mean_Y, sigma_Y:     matrix of parameters for fuzzy data Y (Type: FuzzyData)
+            param:                  (Type: float) kernel parameter
+
+        Output:
+            (Type: numpy.ndarray) kernel matrix
+
+        '''
+
+    gram_matrix = np.zeros((mean_X.shape[0], mean_Y.shape[0]))
+
+
+    if mean_X is mean_Y:  # use symmetry property
+        N = mean_X.shape[0]
+
+        #for i in range(0, N):
+        for i in prange(N):
+            for j in range(i, N):
+
+                value = 1
+                for mean_x, mean_y, sigma_x, sigma_y in zip(mean_X[i, :], mean_Y[j, :], sigma_X[i, :], sigma_Y[j, :]):
+                    value = value * (np.exp(-0.5 * param * (mean_x - mean_y) ** 2 / (sigma_x ** 2 + sigma_y ** 2)))
+
+                gram_matrix[i, j] = value
+                gram_matrix[j, i] = value
+        # tikonov regularization
+        #gram_matrix = gram_matrix + np.eye(N) * np.nextafter(0, 1)
+
+
+    else:  # X and Y are different
+        N = mean_X.shape[0]
+        M = mean_Y.shape[0]
+
+        #for i in range(0, N):
+        for i in prange(N):
+            for j in range(0, M):
+
+                value = 1
+                for mean_x, mean_y, sigma_x, sigma_y in zip(mean_X[i, :], mean_Y[j, :], sigma_X[i, :], sigma_Y[j, :]):
+                    value = value * (np.exp(-0.5 * param * (mean_x - mean_y) ** 2 / (sigma_x ** 2 + sigma_y ** 2)))
+
+                gram_matrix[i, j] = value
+
+    return gram_matrix
+
+
 def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
                                              Y: FuzzyData,
                                              param: float) -> np.ndarray:
-
-        '''
+    '''
 
         Calculates the Gram matrix using the nonsingleton Gaussian kernel on fuzzy sets
 
@@ -200,33 +265,52 @@ def gram_matrix_nonsingleton_gaussian_kernel(X: FuzzyData,
 
         '''
 
+    #
+    mean_X, sigma_X = get_mean_and_std_matrix(X)
+
+    if X is Y:  # use symmetry property
+        N = mean_X.shape[0]
+        gram_matrix = gram_matrix_nonsingleton_gaussian_kernel_njit(mean_X, mean_X, sigma_X, sigma_X, 1) + np.eye(N) * np.nextafter(0, 1)
+    else:  # X and Y are different
+        mean_Y, sigma_Y = get_mean_and_std_matrix(Y)
+        gram_matrix = gram_matrix_nonsingleton_gaussian_kernel_njit(mean_X, mean_Y, sigma_X, sigma_Y, 1)
+
+    '''
         gram_matrix = np.zeros((X.shape[0], Y.shape[0]))
-        for i, tuple_x in enumerate(X):
-            for j, tuple_y in enumerate(Y):
 
-                #
-                value=1
-                for x, y, in zip(tuple_x, tuple_y):
-                    value=value*nonsingleton_gaussian_kernel(x, y, param)
+        if X is Y: # use symmetry property
+            N=X.shape[0]
 
-                #TODO profile this
-                #value=0
-                #for x, y, in zip(tuple_x, tuple_y):
-                #    value=value+test(x,y,gamma)
-                #value=np.exp(value)
-                #print('(prod, value)', prod, value)
+            for i in range(0,N):
+                for j in range(i, N):
 
-                gram_matrix[i, j] = value
-        if X is Y:
-            gram_matrix=gram_matrix+np.eye(X.shape[0])*np.nextafter(0,1)
-        return gram_matrix
+                    value = 1
+                    for x, y, in zip(X[i,:], X[j,:]):
+                        value = value * nonsingleton_gaussian_kernel(x, y, param)
 
-#TODO profile this
-#def test(X: FuzzySet,Y: FuzzySet, gamma: float):
-#    mean_x, sigma_x = X.get_membership_function_params()
-#    mean_y, sigma_y = Y.get_membership_function_params()
+                    gram_matrix[i, j] = value
+                    gram_matrix[j, i] = value
+            #tikonov regularization
+            gram_matrix=gram_matrix+np.eye(N)*np.nextafter(0,1)
 
-#    return -0.5 * gamma * (mean_x - mean_y) ** 2 / (sigma_x ** 2 + sigma_y ** 2)
+
+        else: # X and Y are different
+
+            for i, tuple_x in enumerate(X):
+                for j, tuple_y in enumerate(Y):
+
+                    #
+                    value=1
+                    for x, y, in zip(tuple_x, tuple_y):
+                        value=value*nonsingleton_gaussian_kernel(x, y, param)
+
+                    gram_matrix[i, j] = value
+
+        
+        '''
+    return gram_matrix
+
+
 
 def gram_matrix_KBF_kernel(X: FuzzyData,
                            Y: FuzzyData,
@@ -245,81 +329,21 @@ def gram_matrix_KBF_kernel(X: FuzzyData,
 
     '''
 
-    gram_matrix = np.zeros((X.shape[0], Y.shape[0]))
-    for i, tuple_x in enumerate(X):
-        for j, tuple_y in enumerate(Y):
+    gram_matrix = gram_matrix_nonsingleton_gaussian_kernel(X, Y, KBF_param)
 
-            #
-            value = 1
-            for x, y, in zip(tuple_x, tuple_y):
-                value = value * nonsingleton_gaussian_kernel(x, y, KBF_param)
+    # because overflow
+    denominator = 1 / (np.sum(gram_matrix, axis=1) + np.nextafter(0, 1))
+    denominator = np.nan_to_num(denominator)
 
-            gram_matrix[i, j] = value
-
-    if X is Y:
-        gram_matrix = gram_matrix + np.eye(X.shape[0]) * np.nextafter(0, 1)
-
-    #because overflow
-    denominator=1/(np.sum(gram_matrix, axis=1)+np.nextafter(0, 1))
-    denominator=np.nan_to_num(denominator)
-
-
-    #retrieve kernel parameters and data associated with invalid values and implement an strategy for those values
-    #print("gram_matrix :{}".format(gram_matrix))
-    #print("np.sum(gram_matrix, axis=1) :{}".format(np.sum(gram_matrix, axis=1)))
-    #print("denominator",denominator)
-
-    #print("details:")
-    #
-    #for i, tuple_x in enumerate(X):
-    #    for j, tuple_y in enumerate(Y):
-
-    #        if i==0 and j==0:
-    #            value = 1
-    #            for x, y, in zip(tuple_x, tuple_y):
-    #                print("fuzzy sets x, y")
-    #                print("x : {}".format(x.get_membership_function_params()))
-    #                print("y : {}".format(y.get_membership_function_params()))
-    #                print("nonsingleton_gaussian_kernel(x, y, KBF_param) : {}".format(nonsingleton_gaussian_kernel(x, y, KBF_param)))
-    #                value = value * nonsingleton_gaussian_kernel(x, y, KBF_param)
-    #                print("accumulative value : {}".format(value))
-
-
-
-
-    #
-    #masked_K = np.ma.masked_invalid(gram_matrix)
-    #print("invalid values",gram_matrix[masked_K.mask])
-    #print("kernel parameter : {}".format(KBF_param))
-    #idx=np.where(masked_K.mask==True)
-    #print("invalid values", gram_matrix[idx])
-    #print("associated values X: {}".format(X[idx[0]]))
-    #print("associated values Y: {}".format(X[idx[1]]))
-
-    #masked_denominator=np.ma.masked_invalid(denominator)
-    #idx=np.where(masked_denominator.mask==True)
-    #print("invalid values denominator : {}".format(denominator[idx]))
-
-
-    #         print(K)
-    #         print(masked_K)
-    #         print(masked_K.mask)
-    #         print(np.where(masked_K.mask==True))
-    #         print(K[masked_K.mask])
-    #
-
-    gram_matrix=gram_matrix*denominator[:, np.newaxis]
-
-    #if gram_matrix.shape[0]== gram_matrix.shape[1]:
-    #    gram_matrix=(gram_matrix+np.transpose(gram_matrix))/2
-
+    gram_matrix = gram_matrix * denominator[:, np.newaxis]
 
     return gram_matrix
 
+
 # Wrapper class for the custom kernel KBF kernel
-class KBFkernel(BaseEstimator,TransformerMixin):
+class KBFkernel(BaseEstimator, TransformerMixin):
     def __init__(self, param=1.0):
-        super(KBFkernel,self).__init__()
+        super(KBFkernel, self).__init__()
         self.param = param
 
     def transform(self, X):
@@ -330,10 +354,24 @@ class KBFkernel(BaseEstimator,TransformerMixin):
         return self
 
 
-# Wrapper class for the custom kernel KBF kernel
-class NonSingletonKernel(BaseEstimator,TransformerMixin):
+class KBFkernelSymmetric(BaseEstimator, TransformerMixin):
     def __init__(self, param=1.0):
-        super(NonSingletonKernel,self).__init__()
+        super(KBFkernelSymmetric, self).__init__()
+        self.param = param
+
+    def transform(self, X):
+        return gram_matrix_KBF_kernel(X, self.X_train_, KBF_param=self.param) + np.transpose(
+            gram_matrix_KBF_kernel(self.X_train_, X, KBF_param=self.param)) / 2
+
+    def fit(self, X, y=None, **fit_params):
+        self.X_train_ = X
+        return self
+
+
+# Wrapper class for the custom kernel KBF kernel
+class NonSingletonKernel(BaseEstimator, TransformerMixin):
+    def __init__(self, param=1.0):
+        super(NonSingletonKernel, self).__init__()
         self.param = param
 
     def transform(self, X):

@@ -4,6 +4,7 @@
 
 """
 
+
 class FuzzySet:
 
     _elements      = None  # Elements of the fuzzy set
